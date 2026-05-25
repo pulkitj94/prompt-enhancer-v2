@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt Enhancer v2</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: { sans: ['IBM Plex Sans', 'system-ui'], mono: ['IBM Plex Mono', 'monospace'] },
+      fontSize: { '2xs': '0.65rem' },
+    }
+  }
+}
+</script>
+<style>
+  * { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+  textarea, input, select { font-family: 'IBM Plex Sans', system-ui, sans-serif; }
+  .tab-active { color: #2563eb; border-bottom: 2px solid #2563eb; }
+  .dark .tab-active { color: #60a5fa; border-bottom-color: #60a5fa; }
+  .sector-active { background: #2563eb; color: white; }
+  .dark .sector-active { background: #3b82f6; }
+  .fade-in { animation: fadeIn 0.2s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+  .dark ::-webkit-scrollbar-thumb { background: #374151; }
+</style>
+</head>
+<body class="h-screen overflow-hidden">
+<div id="app" class="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+
+<!-- ═══ SIDEBAR ═══ -->
+<aside class="w-64 min-w-[256px] border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 flex flex-col overflow-y-auto">
+  <div class="p-4 flex flex-col gap-3 flex-1">
+    <!-- Title -->
+    <div class="flex items-center justify-between">
+      <h1 class="text-sm font-bold tracking-tight">Prompt Enhancer v2</h1>
+      <button onclick="toggleTheme()" class="p-1.5 rounded-md hover:bg-gray-200 dark:hover:bg-gray-800 text-xs" title="Toggle theme">
+        <span id="themeIcon">◐</span>
+      </button>
+    </div>
+
+    <!-- Connection -->
+    <div>
+      <div class="text-2xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-800 pb-1 mb-2">Connection</div>
+      <div class="flex gap-1 mb-2">
+        <button onclick="setProvider('openai')" id="btn-openai" class="flex-1 text-xs py-1 px-2 rounded font-medium bg-blue-600 text-white">OpenAI</button>
+        <button onclick="setProvider('anthropic')" id="btn-anthropic" class="flex-1 text-xs py-1 px-2 rounded font-medium bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400">Anthropic</button>
+      </div>
+      <input type="password" id="apiKey" placeholder="sk-..." class="w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20 outline-none">
+    </div>
+
+    <!-- CREAM Model Selection -->
+    <div>
+      <div class="text-2xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-800 pb-1 mb-2">CREAM — Model</div>
+      <select id="modelSelect" onchange="updateModelInfo()" class="w-full text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 outline-none"></select>
+      <p id="modelCream" class="text-2xs text-gray-400 mt-1"></p>
+      <p id="modelCost" class="text-2xs text-gray-400 font-mono"></p>
+    </div>
+
+    <!-- Parameters -->
+    <div>
+      <div class="text-2xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-800 pb-1 mb-2">Parameters</div>
+      <label class="text-xs text-gray-500 dark:text-gray-400">Temperature <span id="tempVal" class="font-mono text-blue-600 dark:text-blue-400">0.0</span></label>
+      <input type="range" id="tempSlider" min="0" max="1" step="0.1" value="0" oninput="document.getElementById('tempVal').textContent=this.value" class="w-full h-1 mt-1 accent-blue-600">
+    </div>
+
+    <!-- Framework Mode -->
+    <div>
+      <div class="text-2xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-800 pb-1 mb-2">Framework Mode</div>
+      <div class="flex gap-1">
+        <button onclick="setMode('ccscr')" id="btn-ccscr" class="flex-1 text-xs py-1 px-2 rounded font-medium bg-blue-600 text-white">CC-SC-R</button>
+        <button onclick="setMode('rct')" id="btn-rct" class="flex-1 text-xs py-1 px-2 rounded font-medium bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400">RCT</button>
+      </div>
+    </div>
+
+    <!-- Observability -->
+    <div id="obsPanel" class="hidden">
+      <div class="text-2xs font-bold uppercase tracking-widest text-gray-400 dark:text-gray-500 border-b border-gray-200 dark:border-gray-800 pb-1 mb-2">Observability</div>
+      <div class="grid grid-cols-2 gap-1.5">
+        <div class="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded p-2 text-center">
+          <div id="obsCalls" class="text-sm font-bold font-mono">0</div>
+          <div class="text-2xs text-gray-400 uppercase">Calls</div>
+        </div>
+        <div class="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded p-2 text-center">
+          <div id="obsTokens" class="text-sm font-bold font-mono">0</div>
+          <div class="text-2xs text-gray-400 uppercase">Tokens</div>
+        </div>
+        <div class="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded p-2 text-center">
+          <div id="obsCost" class="text-sm font-bold font-mono">$0</div>
+          <div class="text-2xs text-gray-400 uppercase">Cost</div>
+        </div>
+        <div class="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded p-2 text-center">
+          <div id="obsLatency" class="text-sm font-bold font-mono">0s</div>
+          <div class="text-2xs text-gray-400 uppercase">Latency</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="mt-auto pt-3 border-t border-gray-200 dark:border-gray-800">
+      <p class="text-2xs text-gray-400">SAC: AI assists. Humans decide.</p>
+    </div>
+  </div>
+</aside>
+
+<!-- ═══ MAIN ═══ -->
+<main class="flex-1 flex flex-col overflow-hidden">
+  <!-- Tabs -->
+  <nav class="flex gap-1 px-6 pt-3 border-b border-gray-200 dark:border-gray-800">
+    <button onclick="showTab('enhance')" data-tab="enhance" class="tab-btn text-sm font-medium px-4 py-2 border-b-2 border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 tab-active">Enhance</button>
+    <button onclick="showTab('results')" data-tab="results" class="tab-btn text-sm font-medium px-4 py-2 border-b-2 border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Results</button>
+    <button onclick="showTab('testrun')" data-tab="testrun" class="tab-btn text-sm font-medium px-4 py-2 border-b-2 border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Test Run</button>
+    <button onclick="showTab('observe')" data-tab="observe" class="tab-btn text-sm font-medium px-4 py-2 border-b-2 border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Observability</button>
+    <button onclick="showTab('learn')" data-tab="learn" class="tab-btn text-sm font-medium px-4 py-2 border-b-2 border-transparent text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Learn</button>
+  </nav>
+
+  <!-- Tab Content -->
+  <div class="flex-1 overflow-y-auto">
+
+    <!-- ═══ ENHANCE TAB ═══ -->
+    <div id="tab-enhance" class="tab-panel p-6 fade-in">
+      <!-- Sector pills -->
+      <div id="sectorPills" class="flex flex-wrap gap-1.5 mb-4"></div>
+
+      <!-- CC-SC-R mode -->
+      <div id="ccscr-fields" class="grid grid-cols-2 gap-6">
+        <div class="flex flex-col gap-3">
+          <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">CC-SC-R Fields</h3>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">C — Context</label><textarea id="f-context" rows="2" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Domain, audience, goal, data sources, brand voice"></textarea></div>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">C — Constraints</label><textarea id="f-constraints" rows="2" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Policies, compliance, PII, tone boundaries"></textarea></div>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">S — Structure</label><textarea id="f-structure" rows="2" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Required sections, format, length, specs"></textarea></div>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">C — Checkpoints</label><textarea id="f-checkpoints" rows="2" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Assumptions, risks, confidence, human review areas"></textarea></div>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">R — Review</label><textarea id="f-review" rows="2" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Approval points, escalation, accountability"></textarea></div>
+        </div>
+        <div class="flex flex-col">
+          <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Draft Prompt</h3>
+          <textarea id="f-draft" class="flex-1 min-h-[380px] text-xs px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Write your rough prompt here. The enhancer will transform it using the framework on the left."></textarea>
+        </div>
+      </div>
+
+      <!-- RCT mode -->
+      <div id="rct-fields" class="hidden grid grid-cols-2 gap-6">
+        <div class="flex flex-col gap-3">
+          <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">RCT Fields</h3>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">R — Role</label><input id="f-role" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 outline-none focus:border-blue-500" placeholder="e.g., a senior financial analyst"></div>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">C — Context</label><textarea id="f-rct-context" rows="4" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Situation, audience, background"></textarea></div>
+          <div><label class="text-xs font-medium text-gray-500 dark:text-gray-400">T — Task</label><textarea id="f-rct-task" rows="4" class="mt-0.5 w-full text-xs px-2.5 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Specific output, format, length, constraints"></textarea></div>
+        </div>
+        <div class="flex flex-col">
+          <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Draft Prompt</h3>
+          <textarea id="f-draft-rct" class="flex-1 min-h-[280px] text-xs px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Write your rough prompt here."></textarea>
+        </div>
+      </div>
+
+      <!-- Enhance button -->
+      <div class="mt-4">
+        <button onclick="enhance()" id="enhanceBtn" class="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded transition-colors">
+          Enhance Prompt
+        </button>
+        <span id="enhanceStatus" class="ml-3 text-xs text-gray-400"></span>
+      </div>
+    </div>
+
+    <!-- ═══ RESULTS TAB ═══ -->
+    <div id="tab-results" class="tab-panel p-6 fade-in hidden">
+      <div id="noResults" class="text-sm text-gray-400 py-8 text-center">Run an enhancement first to see results here.</div>
+      <div id="resultsContent" class="hidden">
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">Before / After Score</h3>
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-center">
+            <div class="text-2xs text-gray-400 uppercase">Before (avg)</div>
+            <div id="scoreBefore" class="text-lg font-bold font-mono text-red-500">0/5</div>
+          </div>
+          <div class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-center">
+            <div class="text-2xs text-gray-400 uppercase">After (avg)</div>
+            <div id="scoreAfter" class="text-lg font-bold font-mono text-blue-500">0/5</div>
+          </div>
+          <div class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-center">
+            <div class="text-2xs text-gray-400 uppercase">Improvement</div>
+            <div id="scoreImprove" class="text-lg font-bold font-mono text-emerald-500">+0</div>
+          </div>
+        </div>
+
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Enhanced Prompt</h3>
+        <div class="relative">
+          <pre id="enhancedPrompt" class="text-xs leading-relaxed p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 whitespace-pre-wrap overflow-x-auto"></pre>
+          <button onclick="copyPrompt()" class="absolute top-2 right-2 text-2xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 hover:bg-gray-300 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400">Copy</button>
+        </div>
+
+        <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mt-5 mb-2">What Changed and Why</h3>
+        <div id="changesList" class="flex flex-col gap-2"></div>
+
+        <div id="guardrailsSection" class="hidden mt-5">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">Guardrail Warnings</h3>
+          <div id="guardrailsList" class="flex flex-col gap-1.5"></div>
+        </div>
+
+        <div id="clarifySection" class="hidden mt-4">
+          <div id="clarifyText" class="text-xs p-3 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300"></div>
+        </div>
+
+        <div id="callStats" class="mt-4 text-2xs text-gray-400 font-mono"></div>
+      </div>
+    </div>
+
+    <!-- ═══ TEST RUN TAB ═══ -->
+    <div id="tab-testrun" class="tab-panel p-6 fade-in hidden">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Test Your Enhanced Prompt</h3>
+      <p class="text-xs text-gray-400 mb-3">Run the enhanced prompt against the selected model to see actual output quality.</p>
+      <div id="noTest" class="text-sm text-gray-400 py-8 text-center">Enhance a prompt first, then come here to test it.</div>
+      <div id="testContent" class="hidden">
+        <textarea id="testPrompt" rows="5" disabled class="w-full text-xs px-3 py-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 resize-none"></textarea>
+        <label class="text-xs font-medium text-gray-500 dark:text-gray-400 mt-3 block">Optional sample input</label>
+        <textarea id="testInput" rows="3" class="mt-0.5 w-full text-xs px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 resize-y outline-none focus:border-blue-500" placeholder="Provide sample input, or leave blank to test as-is."></textarea>
+        <button onclick="runTest()" id="testBtn" class="mt-3 px-5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded transition-colors">Run Test</button>
+        <div id="testOutput" class="hidden mt-4">
+          <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1">Test Output</h4>
+          <div id="testResult" class="text-xs leading-relaxed p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 whitespace-pre-wrap"></div>
+          <div id="testStats" class="mt-2 text-2xs text-gray-400 font-mono"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ OBSERVABILITY TAB ═══ -->
+    <div id="tab-observe" class="tab-panel p-6 fade-in hidden">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Session Observability</h3>
+      <p class="text-xs text-gray-400 mb-4">Evals = did you build it right? | Monitoring = is it still working?</p>
+      <div id="noObs" class="text-sm text-gray-400 py-8 text-center">No calls yet. Enhance a prompt to start tracking.</div>
+      <div id="obsContent" class="hidden">
+        <div class="grid grid-cols-4 gap-3 mb-5">
+          <div class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-center"><div class="text-2xs text-gray-400 uppercase">Total Calls</div><div id="obsTotalCalls" class="text-lg font-bold font-mono">0</div></div>
+          <div class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-center"><div class="text-2xs text-gray-400 uppercase">Total Tokens</div><div id="obsTotalTokens" class="text-lg font-bold font-mono">0</div></div>
+          <div class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-center"><div class="text-2xs text-gray-400 uppercase">Total Cost</div><div id="obsTotalCost" class="text-lg font-bold font-mono">$0</div></div>
+          <div class="bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 text-center"><div class="text-2xs text-gray-400 uppercase">Avg Latency</div><div id="obsAvgLatency" class="text-lg font-bold font-mono">0s</div></div>
+        </div>
+        <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Call Log</h4>
+        <div class="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-800">
+          <table class="w-full text-xs">
+            <thead class="bg-gray-50 dark:bg-gray-900 text-gray-500 dark:text-gray-400"><tr><th class="px-3 py-2 text-left font-medium">Time</th><th class="px-3 py-2 text-left font-medium">Provider</th><th class="px-3 py-2 text-left font-medium">Model</th><th class="px-3 py-2 text-left font-medium">Type</th><th class="px-3 py-2 text-right font-medium">Tokens</th><th class="px-3 py-2 text-right font-medium">Cost</th><th class="px-3 py-2 text-right font-medium">Latency</th></tr></thead>
+            <tbody id="callLogBody"></tbody>
+          </table>
+        </div>
+        <div id="traceSection" class="mt-5">
+          <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Pipeline Trace (Debug)</h4>
+          <details class="mb-1.5"><summary class="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer hover:text-gray-900 dark:hover:text-gray-200 p-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">System prompt sent</summary><pre id="traceSystem" class="text-2xs p-3 mt-1 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto"></pre></details>
+          <details class="mb-1.5"><summary class="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer hover:text-gray-900 dark:hover:text-gray-200 p-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">User message sent</summary><pre id="traceUser" class="text-2xs p-3 mt-1 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto"></pre></details>
+          <details class="mb-1.5"><summary class="text-xs font-medium text-gray-600 dark:text-gray-400 cursor-pointer hover:text-gray-900 dark:hover:text-gray-200 p-2 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">Raw API response</summary><pre id="traceRaw" class="text-2xs p-3 mt-1 rounded bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 whitespace-pre-wrap overflow-x-auto max-h-48 overflow-y-auto"></pre></details>
+          <p id="traceMeta" class="text-2xs text-gray-400 font-mono mt-2"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ LEARN TAB ═══ -->
+    <div id="tab-learn" class="tab-panel p-6 fade-in hidden">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1">Framework Reference</h3>
+      <p class="text-xs text-gray-400 mb-4">The 7 frameworks from the C40 Accelerator — applied to prompt engineering.</p>
+      <div class="flex flex-col gap-2">
+        <details open class="group"><summary class="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800">CC-SC-R — Professional Prompting</summary><div class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed p-3 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-lg"><strong>Context</strong> — Domain, audience, goal, data sources, brand voice.<br><strong>Constraints</strong> — Policies, compliance, PII handling, tone boundaries.<br><strong>Structure</strong> — Required sections, format, length, organization.<br><strong>Checkpoints</strong> — Assumption flagging, risk identification, confidence levels.<br><strong>Review</strong> — Human approval points, escalation triggers, accountability.<br><br><em class="text-gray-400">Every enhanced prompt is scored against these 5 dimensions.</em></div></details>
+        <details class="group"><summary class="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800">RCT — Simple Prompting</summary><div class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed p-3 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-lg"><strong>Role</strong> — Who should the AI act as?<br><strong>Context</strong> — Situation, audience, background.<br><strong>Task</strong> — Specific output needed, format, constraints.<br><br><em class="text-gray-400">Use RCT for quick prompts. Switch to CC-SC-R for production-grade work.</em></div></details>
+        <details class="group"><summary class="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800">SAC — AI Management Philosophy</summary><div class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed p-3 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-lg"><strong>Supervision</strong> — Humans oversee AI. AI is the intern, you are the manager.<br><strong>Accountability</strong> — Human remains accountable. AI assists, humans decide.<br><strong>Continuous Learning</strong> — Iterate prompts, review results, improve.</div></details>
+        <details class="group"><summary class="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800">CREAM — Model Selection</summary><div class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed p-3 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-lg"><strong>C — Cost:</strong> Budget per query/month?<br><strong>R — Response Time:</strong> Real-time or batch?<br><strong>E — Expertise:</strong> General or specialized?<br><strong>A — Accuracy:</strong> Cost of being wrong?<br><strong>M — Modality:</strong> Text only, or images/audio/video?</div></details>
+        <details class="group"><summary class="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800">MWAPA — Application Architecture</summary><div class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed p-3 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-lg"><strong>Model</strong> — AI brain. Prompt in, text out.<br><strong>Workflow</strong> — Business logic, pre/post processing.<br><strong>Agent</strong> — Autonomous decision-maker with tools.<br><strong>Platform</strong> — Infrastructure, APIs, databases.<br><strong>Application</strong> — User-facing product.<br><br><em class="text-gray-400">80% of AI product value lives outside the model.</em></div></details>
+        <details class="group"><summary class="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800">Autonomy Levels — Agent Decision Framework</summary><div class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed p-3 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-lg"><strong>L1 Consultant</strong> — AI gives advice. You decide.<br><strong>L2 Technician</strong> — AI executes a single task.<br><strong>L3 Contractor</strong> — AI runs multi-step workflows.<br><strong>L4 Team</strong> — Multiple agents coordinating.<br><br><em class="text-gray-400">Higher autonomy = stricter Constraints, Checkpoints, and Review.</em></div></details>
+        <details class="group"><summary class="text-xs font-semibold text-gray-700 dark:text-gray-300 cursor-pointer p-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 hover:bg-gray-100 dark:hover:bg-gray-800">Evals and Monitoring</summary><div class="text-xs text-gray-600 dark:text-gray-400 leading-relaxed p-3 border border-t-0 border-gray-200 dark:border-gray-800 rounded-b-lg"><strong>Evals</strong> — "Did you build it right?" Pre-deployment. Pass/fail.<br><strong>Monitoring</strong> — "Is it still working?" Post-deployment. Continuous.<br><strong>Observability = Evals + Monitoring + Tracing.</strong><br><br><em class="text-gray-400">The Observability tab tracks tokens, cost, latency, and traces every call.</em></div></details>
+      </div>
+      <div id="learnInsights" class="hidden mt-5 p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900"></div>
+    </div>
+
+  </div>
+</main>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════
+const MODELS = {
+  openai: [
+    { id: "gpt-4o-mini", name: "GPT-4o Mini", type: "LLM", cream: "Low cost · Fast · General · Good accuracy · Text+Vision", inCost: 0.15, outCost: 0.60 },
+    { id: "gpt-4o", name: "GPT-4o", type: "LLM", cream: "Medium cost · Moderate · General+Expert · High accuracy · Multi-modal", inCost: 2.50, outCost: 10.00 },
+    { id: "gpt-4.1", name: "GPT-4.1", type: "LLM", cream: "Medium cost · Moderate · Coding+Long context · High accuracy · Text", inCost: 2.00, outCost: 8.00 },
+    { id: "o3", name: "o3 (Reasoning)", type: "Reasoning", cream: "Medium cost · Slower · Expert reasoning · High accuracy", inCost: 2.00, outCost: 8.00 },
+    { id: "o4-mini", name: "o4-mini", type: "Reasoning", cream: "Low cost · Fast reasoning · General · Good accuracy", inCost: 0.55, outCost: 2.20 },
+    { id: "gpt-5.4", name: "GPT-5.4", type: "LLM", cream: "Medium-high · Moderate · Expert · High accuracy · 1M ctx", inCost: 2.50, outCost: 15.00 },
+    { id: "gpt-5.5", name: "GPT-5.5", type: "LLM", cream: "High cost · Expert · Highest accuracy · 1M ctx", inCost: 5.00, outCost: 30.00 },
+  ],
+  anthropic: [
+    { id: "claude-haiku-4-5-20251001", name: "Claude Haiku 4.5", type: "LLM", cream: "Low cost · Fast · General · 200K ctx", inCost: 1.00, outCost: 5.00 },
+    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", type: "LLM", cream: "Medium · Fast · General+Expert · 1M ctx", inCost: 3.00, outCost: 15.00 },
+    { id: "claude-opus-4-6", name: "Claude Opus 4.6", type: "LLM", cream: "High · Moderate · Expert · Highest accuracy · 1M ctx", inCost: 5.00, outCost: 25.00 },
+  ]
+};
+
+const SECTORS = {
+  custom: { label: "Custom", context: "", constraints: "", structure: "", checkpoints: "", review: "" },
+  general: { label: "Business", context: "Domain: [your industry]. Audience: [decision-makers/end-users]. Goal: [specific outcome]. Data sources: [approved references].", constraints: "Tone: professional, concise. No jargon without explanation. No speculation — flag uncertainties.", structure: "Lead with executive summary. Include: problem, analysis, recommendations, risks. Length: [target].", checkpoints: "List assumptions. Flag low-confidence areas. Identify 3 risks with mitigations. Note human review areas.", review: "Human approval before distribution. Verify data against source. Decision authority: [role]." },
+  healthcare: { label: "Healthcare", context: "Domain: healthcare/clinical. Audience: [clinicians/patients]. Goal: [patient safety]. Sources: [clinical guidelines only].", constraints: "Never diagnose. Flag uncertainties. HIPAA compliance. No fabricated data. Tone: empathetic, evidence-based.", structure: "Clinical brief: context, assessment, recommendations, contraindications, follow-up. Plain language for patients.", checkpoints: "Flag patient assumptions. Confidence levels mandatory. Drug interaction risks. Clinician review: ALL recommendations.", review: "Clinician review mandatory. Escalation: emergency symptoms. Audit trail required." },
+  fintech: { label: "Fintech", context: "Domain: financial services. Audience: [customers/compliance/regulators]. Goal: [compliance/communication]. Sources: [RBI guidelines].", constraints: "No financial advice. KYC/AML compliance. PII per policy. Tone: respectful, transparent.", structure: "Include: regulatory references, disclosures, privacy notices. FAQ for customer-facing content.", checkpoints: "Flag compliance risks. Document regulatory assumptions. Confidence levels on interpretations.", review: "Compliance officer approval. Legal review for regulatory references." },
+  product: { label: "Product", context: "Domain: product development. Audience: [engineering/stakeholders/users]. Goal: [feature spec/research/roadmap].", constraints: "Evidence-based only. No scope creep. Include success metrics for every recommendation.", structure: "JTBD analysis, user profiles, problem statement, success metrics, risks, acceptance criteria.", checkpoints: "User behavior assumptions. Missing data. Technical feasibility risks. Engineering dependencies.", review: "Stakeholder alignment. Engineering feasibility. User research validation." },
+  compliance: { label: "Compliance", context: "Domain: compliance/ops. Audience: [ops/auditors/regulators]. Goal: [SOP/audit prep/documentation].", constraints: "Exact regulatory citations. No paraphrasing legal requirements. Zero ambiguity in process steps.", structure: "SOP: role definitions, inputs, process steps, control points, escalation, SLAs, audit compliance.", checkpoints: "Verify citations. Flag process gaps. Single points of failure. Human verification controls.", review: "Legal review mandatory. Audit readiness. Version control required." },
+  learning: { label: "L&D", context: "Domain: education/training. Audience: [learners — specify level]. Goal: [knowledge transfer/assessment].", constraints: "Plain language. Age-appropriate. No assumed prior knowledge. Misconception awareness.", structure: "Learning objectives, content delivery, practice activities, assessment criteria, rubric. Bloom's alignment.", checkpoints: "Prerequisite assumptions. Potential misconceptions. Accessibility. Cultural sensitivity.", review: "SME validation. Accessibility compliance. Learner feedback integration." }
+};
+
+const SYS_CCSCR = `You are a senior prompt engineer using the SAC framework (Supervision over Automation, Accountability Remains Human, Continuous Learning).
+
+Transform the user's draft into a production-grade prompt using CC-SC-R:
+C-Context, C-Constraints, S-Structure, C-Checkpoints, R-Review.
+
+Score original (1-5 per dimension), enhance it, score the result.
+
+Return ONLY valid JSON:
+{"original_scores":{"context":<1-5>,"constraints":<1-5>,"structure":<1-5>,"checkpoints":<1-5>,"review":<1-5>},"enhanced_scores":{"context":<1-5>,"constraints":<1-5>,"structure":<1-5>,"checkpoints":<1-5>,"review":<1-5>},"enhanced_prompt":"<full enhanced prompt>","changes_made":[{"dimension":"<name>","change":"<what and why>"}],"guardrail_warnings":["<risks>"],"clarifying_question":"<one question>"}`;
+
+const SYS_RCT = `You are a senior prompt engineer. Enhance the draft using RCT (Role, Context, Task). Score original (1-5 per dimension), enhance, score result.
+
+Return ONLY valid JSON:
+{"original_scores":{"role":<1-5>,"context":<1-5>,"task":<1-5>},"enhanced_scores":{"role":<1-5>,"context":<1-5>,"task":<1-5>},"enhanced_prompt":"<full enhanced prompt>","changes_made":[{"dimension":"<name>","change":"<what and why>"}],"guardrail_warnings":["<risks>"],"clarifying_question":"<one question>"}`;
+
+// ═══════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════
+let state = {
+  provider: localStorage.getItem('pe_provider') || 'openai',
+  mode: localStorage.getItem('pe_mode') || 'ccscr',
+  sector: 'custom',
+  result: null,
+  logs: JSON.parse(localStorage.getItem('pe_logs') || '[]'),
+  lastTrace: null,
+};
+
+// ═══════════════════════════════════════════
+// THEME
+// ═══════════════════════════════════════════
+function initTheme() {
+  const saved = localStorage.getItem('pe_theme');
+  if (saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  }
+  updateThemeIcon();
+}
+function toggleTheme() {
+  document.documentElement.classList.toggle('dark');
+  localStorage.setItem('pe_theme', document.documentElement.classList.contains('dark') ? 'dark' : 'light');
+  updateThemeIcon();
+}
+function updateThemeIcon() {
+  document.getElementById('themeIcon').textContent = document.documentElement.classList.contains('dark') ? '☀' : '☽';
+}
+initTheme();
+
+// ═══════════════════════════════════════════
+// PROVIDERS & MODELS
+// ═══════════════════════════════════════════
+function setProvider(p) {
+  state.provider = p;
+  localStorage.setItem('pe_provider', p);
+  document.getElementById('btn-openai').className = `flex-1 text-xs py-1 px-2 rounded font-medium ${p==='openai' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`;
+  document.getElementById('btn-anthropic').className = `flex-1 text-xs py-1 px-2 rounded font-medium ${p==='anthropic' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`;
+  document.getElementById('apiKey').placeholder = p === 'openai' ? 'sk-...' : 'sk-ant-...';
+  populateModels();
+}
+function populateModels() {
+  const sel = document.getElementById('modelSelect');
+  sel.innerHTML = '';
+  MODELS[state.provider].forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = `${m.name} [${m.type}]`;
+    sel.appendChild(opt);
+  });
+  updateModelInfo();
+}
+function updateModelInfo() {
+  const m = MODELS[state.provider].find(x => x.id === document.getElementById('modelSelect').value);
+  if (m) {
+    document.getElementById('modelCream').textContent = m.cream;
+    document.getElementById('modelCost').textContent = `$${m.inCost}/M in · $${m.outCost}/M out · Verified May 2026`;
+  }
+}
+function getModel() { return MODELS[state.provider].find(x => x.id === document.getElementById('modelSelect').value); }
+
+// ═══════════════════════════════════════════
+// MODE
+// ═══════════════════════════════════════════
+function setMode(m) {
+  state.mode = m;
+  localStorage.setItem('pe_mode', m);
+  document.getElementById('btn-ccscr').className = `flex-1 text-xs py-1 px-2 rounded font-medium ${m==='ccscr' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`;
+  document.getElementById('btn-rct').className = `flex-1 text-xs py-1 px-2 rounded font-medium ${m==='rct' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`;
+  document.getElementById('ccscr-fields').classList.toggle('hidden', m !== 'ccscr');
+  document.getElementById('rct-fields').classList.toggle('hidden', m !== 'rct');
+  document.getElementById('sectorPills').classList.toggle('hidden', m !== 'ccscr');
+}
+
+// ═══════════════════════════════════════════
+// SECTORS
+// ═══════════════════════════════════════════
+function renderSectors() {
+  const c = document.getElementById('sectorPills');
+  c.innerHTML = '';
+  Object.entries(SECTORS).forEach(([key, s]) => {
+    const btn = document.createElement('button');
+    btn.textContent = s.label;
+    btn.className = `text-2xs font-medium px-3 py-1 rounded-full border transition-colors ${state.sector === key ? 'sector-active border-blue-600' : 'border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-600'}`;
+    btn.onclick = () => selectSector(key);
+    c.appendChild(btn);
+  });
+}
+function selectSector(key) {
+  state.sector = key;
+  const s = SECTORS[key];
+  document.getElementById('f-context').value = s.context;
+  document.getElementById('f-constraints').value = s.constraints;
+  document.getElementById('f-structure').value = s.structure;
+  document.getElementById('f-checkpoints').value = s.checkpoints;
+  document.getElementById('f-review').value = s.review;
+  renderSectors();
+}
+
+// ═══════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════
+function showTab(id) {
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.querySelectorAll('.tab-btn').forEach(b => { b.classList.remove('tab-active'); b.classList.add('border-transparent'); });
+  document.getElementById('tab-' + id).classList.remove('hidden');
+  document.querySelector(`[data-tab="${id}"]`).classList.add('tab-active');
+}
+
+// ═══════════════════════════════════════════
+// API CALLS
+// ═══════════════════════════════════════════
+async function callAPI(systemPrompt, userMessage) {
+  const key = document.getElementById('apiKey').value;
+  const model = document.getElementById('modelSelect').value;
+  const temp = parseFloat(document.getElementById('tempSlider').value);
+  const start = Date.now();
+
+  if (state.provider === 'openai') {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({ model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], temperature: temp, max_tokens: 2048 })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return { content: data.choices[0].message.content, inTok: data.usage?.prompt_tokens||0, outTok: data.usage?.completion_tokens||0, latency: (Date.now()-start)/1000 };
+  } else {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+      body: JSON.stringify({ model, max_tokens: 2048, system: systemPrompt, messages: [{ role: 'user', content: userMessage }], temperature: temp })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message);
+    return { content: data.content[0].text, inTok: data.usage?.input_tokens||0, outTok: data.usage?.output_tokens||0, latency: (Date.now()-start)/1000 };
+  }
+}
+
+function calcCost(inTok, outTok) {
+  const m = getModel();
+  return m ? (m.inCost * inTok / 1e6) + (m.outCost * outTok / 1e6) : 0;
+}
+
+function parseJSON(content) {
+  let c = content.trim();
+  if (c.startsWith('```')) c = c.split('\n').slice(1).join('\n');
+  if (c.endsWith('```')) c = c.slice(0, c.lastIndexOf('```'));
+  return JSON.parse(c.trim());
+}
+
+// ═══════════════════════════════════════════
+// ENHANCE
+// ═══════════════════════════════════════════
+async function enhance() {
+  const key = document.getElementById('apiKey').value;
+  if (!key) { alert('Enter your API key in the sidebar.'); return; }
+
+  const draft = state.mode === 'ccscr' ? document.getElementById('f-draft').value : document.getElementById('f-draft-rct').value;
+  if (!draft.trim()) { alert('Enter a draft prompt first.'); return; }
+
+  const btn = document.getElementById('enhanceBtn');
+  const status = document.getElementById('enhanceStatus');
+  btn.disabled = true; btn.textContent = 'Enhancing...'; btn.classList.add('opacity-50');
+  status.textContent = '';
+
+  try {
+    let sys, msg;
+    if (state.mode === 'ccscr') {
+      sys = SYS_CCSCR;
+      msg = `SECTOR: ${SECTORS[state.sector].label}\nCONTEXT: ${document.getElementById('f-context').value}\nCONSTRAINTS: ${document.getElementById('f-constraints').value}\nSTRUCTURE: ${document.getElementById('f-structure').value}\nCHECKPOINTS: ${document.getElementById('f-checkpoints').value}\nREVIEW: ${document.getElementById('f-review').value}\n\nUSER DRAFT:\n${draft}\n\nReturn ONLY valid JSON.`;
+    } else {
+      sys = SYS_RCT;
+      msg = `ROLE: ${document.getElementById('f-role').value}\nCONTEXT: ${document.getElementById('f-rct-context').value}\nTASK: ${document.getElementById('f-rct-task').value}\n\nUSER DRAFT:\n${draft}\n\nReturn ONLY valid JSON.`;
+    }
+
+    const res = await callAPI(sys, msg);
+    const parsed = parseJSON(res.content);
+    const cost = calcCost(res.inTok, res.outTok);
+
+    state.result = parsed;
+    state.lastTrace = { system: sys, user: msg, raw: res.content, model: document.getElementById('modelSelect').value, temp: document.getElementById('tempSlider').value, tokens: res.inTok+res.outTok, latency: res.latency, cost };
+
+    const log = { time: new Date().toLocaleTimeString(), provider: state.provider, model: getModel().name, type: state.mode.toUpperCase(), inTok: res.inTok, outTok: res.outTok, tokens: res.inTok+res.outTok, cost, latency: res.latency };
+    state.logs.push(log);
+    localStorage.setItem('pe_logs', JSON.stringify(state.logs));
+
+    renderResults();
+    renderObservability();
+    updateSidebarObs();
+    status.textContent = 'Done — see Results tab';
+    status.className = 'ml-3 text-xs text-emerald-600 dark:text-emerald-400';
+
+    document.getElementById('noTest').classList.add('hidden');
+    document.getElementById('testContent').classList.remove('hidden');
+    document.getElementById('testPrompt').value = parsed.enhanced_prompt;
+
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+    status.className = 'ml-3 text-xs text-red-500';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Enhance Prompt'; btn.classList.remove('opacity-50');
+  }
+}
+
+// ═══════════════════════════════════════════
+// RENDER RESULTS
+// ═══════════════════════════════════════════
+function renderResults() {
+  const r = state.result; if (!r) return;
+  document.getElementById('noResults').classList.add('hidden');
+  document.getElementById('resultsContent').classList.remove('hidden');
+
+  const origScores = Object.values(r.original_scores);
+  const enhScores = Object.values(r.enhanced_scores);
+  const origAvg = origScores.reduce((a,b)=>a+b,0)/origScores.length;
+  const enhAvg = enhScores.reduce((a,b)=>a+b,0)/enhScores.length;
+
+  document.getElementById('scoreBefore').textContent = `${origAvg.toFixed(1)}/5`;
+  document.getElementById('scoreAfter').textContent = `${enhAvg.toFixed(1)}/5`;
+  document.getElementById('scoreImprove').textContent = `+${(enhAvg-origAvg).toFixed(1)}`;
+  document.getElementById('enhancedPrompt').textContent = r.enhanced_prompt;
+
+  const cl = document.getElementById('changesList');
+  cl.innerHTML = '';
+  (r.changes_made||[]).forEach(c => {
+    cl.innerHTML += `<div class="text-xs p-2.5 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900"><span class="font-semibold text-blue-600 dark:text-blue-400">${c.dimension}</span> — ${c.change}</div>`;
+  });
+
+  const gs = document.getElementById('guardrailsSection');
+  const gl = document.getElementById('guardrailsList');
+  if (r.guardrail_warnings && r.guardrail_warnings.length && r.guardrail_warnings[0]) {
+    gs.classList.remove('hidden');
+    gl.innerHTML = '';
+    r.guardrail_warnings.forEach(w => { gl.innerHTML += `<div class="text-xs p-2.5 rounded bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300">${w}</div>`; });
+  } else { gs.classList.add('hidden'); }
+
+  const cs = document.getElementById('clarifySection');
+  if (r.clarifying_question) {
+    cs.classList.remove('hidden');
+    document.getElementById('clarifyText').innerHTML = `<strong>Suggested clarification:</strong> ${r.clarifying_question}`;
+  } else { cs.classList.add('hidden'); }
+
+  const t = state.lastTrace;
+  document.getElementById('callStats').textContent = `${t.model} | ${state.logs[state.logs.length-1].inTok} in · ${state.logs[state.logs.length-1].outTok} out | $${t.cost.toFixed(6)} | ${t.latency.toFixed(1)}s`;
+}
+
+// ═══════════════════════════════════════════
+// TEST RUN
+// ═══════════════════════════════════════════
+async function runTest() {
+  const key = document.getElementById('apiKey').value;
+  if (!key) { alert('Enter your API key.'); return; }
+  const btn = document.getElementById('testBtn');
+  btn.disabled = true; btn.textContent = 'Testing...'; btn.classList.add('opacity-50');
+
+  try {
+    let prompt = document.getElementById('testPrompt').value;
+    const input = document.getElementById('testInput').value;
+    if (input.trim()) prompt += `\n\nINPUT:\n${input}`;
+
+    const res = await callAPI('You are a helpful assistant. Follow the prompt precisely.', prompt);
+    const cost = calcCost(res.inTok, res.outTok);
+
+    document.getElementById('testOutput').classList.remove('hidden');
+    document.getElementById('testResult').textContent = res.content;
+    document.getElementById('testStats').textContent = `${getModel().name} | ${res.inTok} in · ${res.outTok} out | $${cost.toFixed(6)} | ${res.latency.toFixed(1)}s`;
+
+    state.logs.push({ time: new Date().toLocaleTimeString(), provider: state.provider, model: getModel().name, type: 'TEST', inTok: res.inTok, outTok: res.outTok, tokens: res.inTok+res.outTok, cost, latency: res.latency });
+    localStorage.setItem('pe_logs', JSON.stringify(state.logs));
+    renderObservability();
+    updateSidebarObs();
+  } catch (e) {
+    alert('Test failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Run Test'; btn.classList.remove('opacity-50');
+  }
+}
+
+// ═══════════════════════════════════════════
+// OBSERVABILITY
+// ═══════════════════════════════════════════
+function renderObservability() {
+  const logs = state.logs;
+  if (!logs.length) return;
+  document.getElementById('noObs').classList.add('hidden');
+  document.getElementById('obsContent').classList.remove('hidden');
+
+  document.getElementById('obsTotalCalls').textContent = logs.length;
+  document.getElementById('obsTotalTokens').textContent = logs.reduce((s,l)=>s+l.tokens,0).toLocaleString();
+  document.getElementById('obsTotalCost').textContent = '$' + logs.reduce((s,l)=>s+l.cost,0).toFixed(6);
+  document.getElementById('obsAvgLatency').textContent = (logs.reduce((s,l)=>s+l.latency,0)/logs.length).toFixed(1) + 's';
+
+  const tbody = document.getElementById('callLogBody');
+  tbody.innerHTML = '';
+  logs.forEach(l => {
+    tbody.innerHTML += `<tr class="border-t border-gray-100 dark:border-gray-800"><td class="px-3 py-2 font-mono">${l.time}</td><td class="px-3 py-2">${l.provider}</td><td class="px-3 py-2">${l.model}</td><td class="px-3 py-2">${l.type}</td><td class="px-3 py-2 text-right font-mono">${l.tokens}</td><td class="px-3 py-2 text-right font-mono">$${l.cost.toFixed(6)}</td><td class="px-3 py-2 text-right font-mono">${l.latency.toFixed(1)}s</td></tr>`;
+  });
+
+  if (state.lastTrace) {
+    document.getElementById('traceSystem').textContent = state.lastTrace.system;
+    document.getElementById('traceUser').textContent = state.lastTrace.user;
+    document.getElementById('traceRaw').textContent = state.lastTrace.raw;
+    document.getElementById('traceMeta').textContent = `Model: ${state.lastTrace.model} | Temp: ${state.lastTrace.temp} | Tokens: ${state.lastTrace.tokens} | Latency: ${state.lastTrace.latency.toFixed(1)}s | Cost: $${state.lastTrace.cost.toFixed(6)}`;
+  }
+}
+
+function updateSidebarObs() {
+  if (!state.logs.length) return;
+  document.getElementById('obsPanel').classList.remove('hidden');
+  document.getElementById('obsCalls').textContent = state.logs.length;
+  document.getElementById('obsTokens').textContent = state.logs.reduce((s,l)=>s+l.tokens,0).toLocaleString();
+  document.getElementById('obsCost').textContent = '$' + state.logs.reduce((s,l)=>s+l.cost,0).toFixed(4);
+  document.getElementById('obsLatency').textContent = (state.logs.reduce((s,l)=>s+l.latency,0)/state.logs.length).toFixed(1) + 's';
+}
+
+function copyPrompt() {
+  navigator.clipboard.writeText(state.result?.enhanced_prompt || '');
+  const btn = event.target;
+  btn.textContent = 'Copied';
+  setTimeout(() => btn.textContent = 'Copy', 1500);
+}
+
+// ═══════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════
+setProvider(state.provider);
+setMode(state.mode);
+renderSectors();
+if (state.logs.length) { renderObservability(); updateSidebarObs(); }
+</script>
+</body>
+</html>
